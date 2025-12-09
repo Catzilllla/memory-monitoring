@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Python Memory Layout</title>
+  <style>
+    body { background: #1a1a1a; color: #eee; font-family: monospace; margin: 0; padding: 20px; }
+    #canvas-container { display: flex; justify-content: center; margin-top: 20px; }
+    canvas { background: #000; border: 1px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    #stats { text-align: center; font-size: 1.2em; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<div id="stats">Loading...</div>
+<div id="canvas-container">
+  <canvas id="memCanvas" width="1000" height="800"></canvas>
+</div>
+
+<script>
+const canvas = document.getElementById("memCanvas");
+const ctx = canvas.getContext("2d");
+
+async function updateView() {
+  try {
+    const res = await fetch("/layout");
+    const data = await res.json();
+    drawMemory(data);
+    
+    document.getElementById("stats").innerHTML = `
+      RSS: ${(data.total_rss / 1024 / 1024).toFixed(2)} MB | 
+      Arenas: ${data.arenas.length}
+    `;
+  } catch (e) { console.error(e); }
+}
+
+function drawMemory(data) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Отступы и размеры
+  const PADDING = 20;
+  const ARENA_WIDTH = 400;
+  const ARENA_HEIGHT = 350;
+  
+  data.arenas.forEach((arena, i) => {
+    // Координаты арены (сеткой)
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const ax = PADDING + col * (ARENA_WIDTH + PADDING);
+    const ay = PADDING + row * (ARENA_HEIGHT + PADDING);
+    
+    drawArena(ax, ay, ARENA_WIDTH, ARENA_HEIGHT, arena);
+  });
+}
+
+function drawArena(x, y, w, h, arena) {
+  // Рамка АРЕНЫ
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  
+  // Подпись
+  ctx.fillStyle = "#fff";
+  ctx.font = "14px monospace";
+  ctx.fillText(`ARENA @ 0x${arena.addr.toString(16)}`, x + 10, y + 20);
+  ctx.fillText(`Size: ${(arena.size/1024).toFixed(0)}KB`, x + 10, y + 35);
+  
+  // Рисуем ПУЛЫ внутри (сетка 4x4)
+  const poolW = (w - 40) / 4;
+  const poolH = (h - 60) / 4;
+  
+  arena.pools.forEach((pool, i) => {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    const px = x + 20 + col * poolW;
+    const py = y + 50 + row * poolH;
+    
+    drawPool(px, py, poolW - 5, poolH - 5, pool);
+  });
+}
+
+function drawPool(x, y, w, h, pool) {
+  // Рамка ПУЛА
+  ctx.strokeStyle = "#888";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  
+  ctx.fillStyle = "#aaa";
+  ctx.font = "10px monospace";
+  ctx.fillText("POOL", x + 3, y + 10);
+  
+  // Рисуем БЛОКИ внутри (стопкой)
+  const blockH = (h - 20) / 8; // макс 8 блоков для вида
+  
+  pool.blocks.forEach((block, i) => {
+    const by = y + 15 + i * blockH;
+    
+    ctx.strokeStyle = "#4f4"; // Зеленый для занятых блоков
+    ctx.strokeRect(x + 5, by, w - 10, blockH - 2);
+    
+    ctx.fillStyle = "#4f4";
+    ctx.fillText("BLOCK", x + 10, by + 10);
+  });
+  
+  if (pool.total_blocks > 8) {
+    ctx.fillStyle = "#666";
+    ctx.fillText(`+${pool.total_blocks - 8} more...`, x + 5, y + h - 2);
+  }
+}
+
+setInterval(updateView, 500);
+</script>
+</body>
+</html>
